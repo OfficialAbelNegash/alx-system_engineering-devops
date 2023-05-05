@@ -1,23 +1,47 @@
 global
-        log /dev/log    local0
-	stats socket /run/haproxy/admin.sock mode 660 level admin
-
+    log 127.0.0.1 local0 notice
+    maxconn 2000
+    user haproxy
+    group haproxy
 defaults
-        log     global
-        mode    http
-        option  httplog
-	timeout connect  10s
-	timeout client  30s
-	timeout server  30s
+    log     global
+    mode    http
+    option  forwardfor
+    option  http-server-close
+    retries 3
+    option redispatch
+    timeout connect  5000
+    timeout client  10000
+    timeout server  10000
+listen hbnb
+    bind 0.0.0.0:443
+    mode http
+    stats enable
+    stats uri /haproxy?stats
+    balance roundrobin
+    option httpclose
+    option forwardfor
+	server 159825-web-01 54.197.64.149:80 check
+	server 159825-web-02 100.26.240.19:80 check
+    option  forwardfor
+    option  http-server-close
 
-frontend th3gr00t-tech-frontend
-	bind *:80
-	bind *:443 ssl crt /etc/haproxy/certs/th3gr00t.tech.pem
-	http-request redirect scheme https unless { ssl_fc }
-	http-request set-header X-Forwarded-Proto https
-	default_backend th3gr00t-tech-backend
+frontend www-http
+    bind   100.25.24.215:80
+    reqadd X-Forwarded-Proto:\ http
+    default_backend www-backend
 
-backend th3gr00t-tech-backend
-	balance roundrobin
-        server 159825-web-01 54.197.64.149:80 check
-        server 159825-web-02 100.26.240.19:80 check
+frontend www-https
+    bind   34.201.161.234:443 ssl crt /etc/haproxy/certs/www.abel.tech.pem
+    reqadd X-Forwarded-Proto:\ https
+    acl letsencrypt-acl path_beg /.well-known/acme-challenge/
+    use_backend letsencrypt-backend if letsencrypt-acl
+    default_backend www-backend
+
+backend www-backend
+   redirect scheme https if !{ ssl_fc }
+   server 159825-web-01 54.197.64.149:80 check
+   server 159825-web-02 100.26.240.19:80 check
+
+backend letsencrypt-backend
+   server letsencrypt 127.0.0.1:54321
